@@ -90,10 +90,6 @@ export async function POST(request: Request) {
       applyPoiData(response, poisResult);
       response.reply = buildPoiReply(city, poisResult);
       await enrichWithBaiduMap(response);
-      response.reply = withFallbackCityNotice(
-        response.reply,
-        fallbackCityNotice,
-      );
     } else {
       applyCityMockData(response, cityMockData["苏州"]);
       response.reply = `抱歉，暂时无法获取 ${city} 的数据，先用苏州示例数据演示。`;
@@ -491,6 +487,15 @@ function applyPoiData(response: ChatResponse, pois: PoiResult) {
     zoom: 12,
     markers: [],
     polyline: [],
+  };
+
+  const stopNames = stops.map((s) => s.name).join(" → ");
+  response.uiText = {
+    ...response.uiText,
+    suggestedItinerary: stopNames,
+    suggestedItineraryNote: `全程节奏适中，景点和餐厅都已根据真实数据为你筛选。`,
+    mapIntro: `${city}的游览路线已规划好，这些景点和餐厅都来自真实数据。`,
+    mapDetailReply: `这是为你规划的 ${city} 经典游路线：${stopNames}。全程少绕路，节奏适中。`,
   };
 
   response.restaurants = restaurants.map((r, i) => ({
