@@ -398,12 +398,20 @@ async function buildItineraryFromPoi(
   intent: import("@/types/agent").TripIntent,
 ): Promise<PoiResult | null> {
   try {
+    const keywords = intent.preferences.interests?.[0] || "";
+    const cuisine = intent.preferences.cuisines?.[0] || "";
+
     const [attractions, restaurants] = await Promise.all([
-      searchAttractions(city, intent.preferences.interests?.[0] || "景点"),
-      searchRestaurants(city, intent.preferences.cuisines?.[0] || "餐厅"),
+      searchAttractions(city, keywords || "景点"),
+      searchRestaurants(city, cuisine || "餐厅"),
     ]);
 
-    if (attractions.length === 0) return null;
+    if (attractions.length === 0) {
+      console.error(`Gaode POI: no attractions found for city=${city}, keyword=${keywords}`);
+      return null;
+    }
+
+    console.error(`Gaode POI success: city=${city}, attractions=${attractions.length}, restaurants=${restaurants.length}`);
 
     return { attractions, restaurants };
   } catch (error) {

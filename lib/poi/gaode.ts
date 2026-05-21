@@ -24,7 +24,7 @@ export async function searchAttractions(
   const key = getAmapKey();
   if (!key) throw new Error("AMAP_API_KEY not configured");
 
-  const url = `${AMAP_REST_API}/place/text?key=${key}&keywords=${encodeURIComponent(keywords)}&city=${encodeURIComponent(city)}&citylimit=true&types=110000&offset=10&page=1&extensions=all`;
+  const url = `${AMAP_REST_API}/place/text?key=${key}&keywords=${encodeURIComponent(keywords)}&city=${encodeURIComponent(city)}&citylimit=true&offset=10&page=1&extensions=all`;
 
   const res = await fetch(url);
   const data = await res.json();
@@ -50,7 +50,7 @@ export async function searchRestaurants(
   const key = getAmapKey();
   if (!key) throw new Error("AMAP_API_KEY not configured");
 
-  const url = `${AMAP_REST_API}/place/text?key=${key}&keywords=${encodeURIComponent(keywords)}&city=${encodeURIComponent(city)}&citylimit=true&types=050000&offset=10&page=1&extensions=all`;
+  const url = `${AMAP_REST_API}/place/text?key=${key}&keywords=${encodeURIComponent(keywords)}&city=${encodeURIComponent(city)}&citylimit=true&offset=10&page=1&extensions=all`;
 
   const res = await fetch(url);
   const data = await res.json();
