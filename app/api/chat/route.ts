@@ -83,7 +83,9 @@ export async function POST(request: Request) {
     await enrichWithBaiduMap(response);
   } else if (response.intent.city) {
     const city = response.intent.city.trim();
+    console.error(`DEBUG: intent.city="${city}"`);
     const poisResult = await buildItineraryFromPoi(city, response.intent);
+    console.error(`DEBUG: poisResult=${poisResult ? `found ${poisResult.attractions.length} attractions` : 'null'}`);
     if (poisResult) {
       applyPoiData(response, poisResult);
       response.reply = buildPoiReply(city, poisResult);
