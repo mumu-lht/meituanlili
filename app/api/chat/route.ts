@@ -24,10 +24,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const message = body.message?.trim();
+  const message = body.message?.trim() || "";
+  const hasImage = !!body.image;
 
-  if (!message) {
-    return Response.json({ error: "message is required" }, { status: 400 });
+  if (!message && !hasImage) {
+    return Response.json({ error: "message or image is required" }, { status: 400 });
   }
 
   const userId = body.userId?.trim() || DEFAULT_USER_ID;
