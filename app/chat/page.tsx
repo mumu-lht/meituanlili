@@ -418,6 +418,9 @@ export default function ChatPage() {
           onBack={() => setCurrentView("plan")}
           onOpenBooking={() => setShowBookingModal(true)}
           bookingConfirmed={bookingConfirmed}
+          uploadedImage={uploadedImage}
+          onImageUpload={handleImageUpload}
+          onRemoveImage={removeUploadedImage}
         />
       </section>
 
@@ -748,6 +751,9 @@ function MapView({
   onBack,
   onOpenBooking,
   bookingConfirmed,
+  uploadedImage,
+  onImageUpload,
+  onRemoveImage,
 }: {
   chatResponse: ChatResponse;
   draft: string;
@@ -756,6 +762,9 @@ function MapView({
   onBack: () => void;
   onOpenBooking: () => void;
   bookingConfirmed: boolean;
+  uploadedImage: string | null;
+  onImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveImage: () => void;
 }) {
   const actions = chatResponse.suggestedActions.filter((action) =>
     [
@@ -836,6 +845,9 @@ function MapView({
             chatResponse={chatResponse}
             placeholder={chatResponse.uiText.mapFollowUpPlaceholder}
             compact
+            uploadedImage={uploadedImage}
+            onImageUpload={onImageUpload}
+            onRemoveImage={onRemoveImage}
           />
         </div>
       </section>
