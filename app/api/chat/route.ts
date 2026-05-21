@@ -75,7 +75,7 @@ export async function POST(request: Request) {
   if (shouldUseLastResponse && lastResponse) {
     applyPreviousResponseData(response, lastResponse);
     response.reply = buildContextFallbackReply(message, response);
-  } else if (citySelection) {
+  } else if (citySelection && !citySelection.usedFallback) {
     applyCityMockData(response, citySelection.data);
     response.reply = withFallbackCityNotice(
       buildCityFallbackReply(citySelection.data),
