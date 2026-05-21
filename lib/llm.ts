@@ -13,8 +13,8 @@ import type {
   TripIntentName,
 } from "@/types/agent";
 
-const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
+const DEEPSEEK_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+const DEFAULT_DEEPSEEK_MODEL = "qwen-vl-max";
 
 type IntentPayload = {
   intent?: unknown;
