@@ -5,6 +5,7 @@ import {
   type CityMockData,
   type CityMockSelection,
 } from "@/lib/mock/cityMockData";
+import { queryBaiduRoute, calculateUiPositions } from "@/lib/map/baidu";
 import type {
   ChatHistoryMessage,
   ChatRequest,
@@ -78,6 +79,7 @@ export async function POST(request: Request) {
       buildCityFallbackReply(citySelection.data),
       fallbackCityNotice,
     );
+    await enrichWithBaiduMap(response);
   }
 
   try {
@@ -290,4 +292,65 @@ function withFallbackCityNotice(replyText: string, notice: string) {
   }
 
   return `${notice}${replyText}`;
+}
+
+async function enrichWithBaiduMap(response: ChatResponse) {
+  try {
+    const stops = response.itinerary.stops.map((stop) => ({
+      name: stop.name,
+      coordinates: { lat: stop.coordinates.lat, lng: stop.coordinates.lng },
+    }));
+
+    if (stops.length < 2) return;
+
+    const routeResult = await queryBaiduRoute(stops, "driving");
+
+    const lats = routeResult.polyline.map((p) => p.lat);
+    const lngs = routeResult.polyline.map((p) => p.lng);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+
+    response.map.polyline = routeResult.polyline;
+    response.map.center = {
+      lat: (minLat + maxLat) / 2,
+      lng: (minLng + maxLng) / 2,
+    };
+    response.map.zoom = 12;
+
+    response.map.markers = response.itinerary.stops.map((stop, index) => {
+      const latRange = maxLat - minLat || 0.01;
+      const lngRange = maxLng - minLng || 0.01;
+      return {
+        id: `marker-${stop.id}`,
+        stopId: stop.id,
+        title: stop.name,
+        type: stop.type,
+        coordinates: stop.coordinates,
+        order: index + 1,
+        uiPosition: {
+          left: `${((stop.coordinates.lng - minLng) / lngRange) * 80 + 10}%`,
+          top: `${((maxLat - stop.coordinates.lat) / latRange) * 80 + 10}%`,
+        },
+      };
+    });
+
+    response.itinerary.totalDistanceMeters = routeResult.totalDistanceMeters;
+    response.itinerary.totalWalkMinutes = routeResult.totalDurationMinutes;
+
+    if (routeResult.legs.length > 0) {
+      response.itinerary.legs = routeResult.legs.map((leg, index) => ({
+        id: `leg-${index}`,
+        fromStopId: response.itinerary.stops[index]?.id || "",
+        toStopId: response.itinerary.stops[index + 1]?.id || "",
+        mode: leg.mode,
+        durationMinutes: leg.durationMinutes,
+        distanceMeters: leg.distanceMeters,
+        instruction: leg.instruction,
+      }));
+    }
+  } catch (error) {
+    console.error("Baidu Maps API error:", error);
+  }
 }
