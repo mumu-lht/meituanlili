@@ -14,7 +14,7 @@ import type {
 } from "@/types/agent";
 
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
-const DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash";
+const DEFAULT_DEEPSEEK_MODEL = "deepseek-chat";
 
 type IntentPayload = {
   intent?: unknown;
