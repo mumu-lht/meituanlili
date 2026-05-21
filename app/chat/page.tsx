@@ -118,8 +118,26 @@ export default function ChatPage() {
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [submittedImage, setSubmittedImage] = useState<string | null>(null);
 
   const sessionStarted = currentView !== "home";
+
+  function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string;
+      setUploadedImage(result);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeUploadedImage() {
+    setUploadedImage(null);
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -170,6 +188,8 @@ export default function ChatPage() {
     setBookingConfirmed(false);
     setShowBookingModal(false);
     setAgentStage("idle");
+    setUploadedImage(null);
+    setSubmittedImage(null);
   }
 
   function handleOpenConversation(conversation: StoredConversation) {
@@ -191,6 +211,8 @@ export default function ChatPage() {
     setShowBookingModal(false);
     setAgentStage("complete");
     setCurrentView("plan");
+    setUploadedImage(null);
+    setSubmittedImage(null);
   }
 
   function handleClearConversations() {
@@ -268,11 +290,13 @@ export default function ChatPage() {
     event.preventDefault();
 
     const message = draft.trim();
-    if (!message || isLoading) {
+    if (!(message || uploadedImage) || isLoading) {
       return;
     }
 
+    const currentImage = uploadedImage;
     setSubmittedMessage(message);
+    setSubmittedImage(currentImage);
     setDraft("");
     setTypedReply("");
     setErrorMessage("");
@@ -295,6 +319,7 @@ export default function ChatPage() {
       sessionId: conversationId,
       conversationId,
       message,
+      image: currentImage ?? undefined,
       historyMessages: activeConversation
         ? getRecentHistoryMessages(activeConversation.messages)
         : undefined,
@@ -333,6 +358,7 @@ export default function ChatPage() {
         isNewConversation,
       });
       setAgentStage("typing");
+      setUploadedImage(null);
     } catch {
       if (isNewConversation) {
         setActiveConversationId(null);
@@ -360,11 +386,15 @@ export default function ChatPage() {
           draft={draft}
           setDraft={setDraft}
           submittedMessage={submittedMessage}
+          submittedImage={submittedImage}
           typedReply={typedReply}
           errorMessage={errorMessage}
           isLoading={isLoading}
           conversations={conversations}
           activeConversationId={activeConversationId}
+          uploadedImage={uploadedImage}
+          onImageUpload={handleImageUpload}
+          onRemoveImage={removeUploadedImage}
           onSubmit={handleSubmit}
           onOpenMap={() => setCurrentView("map")}
           onNewConversation={handleNewConversation}
@@ -410,11 +440,15 @@ function ConversationView({
   draft,
   setDraft,
   submittedMessage,
+  submittedImage,
   typedReply,
   errorMessage,
   isLoading,
   conversations,
   activeConversationId,
+  uploadedImage,
+  onImageUpload,
+  onRemoveImage,
   onSubmit,
   onOpenMap,
   onNewConversation,
@@ -427,11 +461,15 @@ function ConversationView({
   draft: string;
   setDraft: (value: string) => void;
   submittedMessage: string;
+  submittedImage: string | null;
   typedReply: string;
   errorMessage: string;
   isLoading: boolean;
   conversations: StoredConversation[];
   activeConversationId: string | null;
+  uploadedImage: string | null;
+  onImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveImage: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onOpenMap: () => void;
   onNewConversation: () => void;
@@ -472,6 +510,7 @@ function ConversationView({
           <ChatThread
             chatResponse={chatResponse}
             submittedMessage={submittedMessage}
+            submittedImage={submittedImage}
             typedReply={typedReply}
             agentStage={agentStage}
             errorMessage={errorMessage}
@@ -494,6 +533,9 @@ function ConversationView({
             chatResponse={chatResponse}
             disabled={isLoading}
             compact={sessionStarted}
+            uploadedImage={uploadedImage}
+            onImageUpload={onImageUpload}
+            onRemoveImage={onRemoveImage}
             placeholder={
               sessionStarted
                 ? chatResponse.uiText.followUpPlaceholder
@@ -543,6 +585,7 @@ function WelcomeHero({ chatResponse }: { chatResponse: ChatResponse }) {
 function ChatThread({
   chatResponse,
   submittedMessage,
+  submittedImage,
   typedReply,
   agentStage,
   errorMessage,
@@ -550,6 +593,7 @@ function ChatThread({
 }: {
   chatResponse: ChatResponse;
   submittedMessage: string;
+  submittedImage: string | null;
   typedReply: string;
   agentStage: AgentStage;
   errorMessage: string;
@@ -563,6 +607,15 @@ function ChatThread({
       <div className="flex justify-end">
         <div className="max-w-[560px] rounded-[20px] bg-[#242832] px-6 py-4 text-lg leading-8 text-white shadow-[0_16px_32px_rgba(14,18,26,0.18)]">
           {submittedMessage}
+          {submittedImage && (
+            <div className="mt-3">
+              <img
+                src={submittedImage}
+                alt="用户上传的图片"
+                className="max-w-full rounded-lg object-contain"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -897,6 +950,9 @@ function PromptInput({
   placeholder,
   compact = false,
   disabled = false,
+  uploadedImage,
+  onImageUpload,
+  onRemoveImage,
 }: {
   id: string;
   value: string;
@@ -906,6 +962,9 @@ function PromptInput({
   placeholder: string;
   compact?: boolean;
   disabled?: boolean;
+  uploadedImage: string | null;
+  onImageUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveImage: () => void;
 }) {
   return (
     <form onSubmit={onSubmit}>
@@ -917,6 +976,23 @@ function PromptInput({
           compact ? "rounded-[28px] p-4" : "p-8"
         }`}
       >
+        {uploadedImage && (
+          <div className="relative mb-3 inline-block">
+            <img
+              src={uploadedImage}
+              alt="上传预览"
+              className="max-h-32 rounded-lg object-contain"
+            />
+            <button
+              type="button"
+              onClick={onRemoveImage}
+              className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+              aria-label="移除图片"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <textarea
           id={id}
           value={value}
@@ -937,6 +1013,18 @@ function PromptInput({
               compact ? "max-h-0 opacity-0" : "max-h-20 opacity-100"
             }`}
           >
+            {!compact && (
+              <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-[#deded9] bg-white px-6 py-3 text-lg font-medium text-[#343431] shadow-[0_5px_18px_rgba(31,31,28,0.08)] transition hover:border-[#48b85a] hover:text-[#2fa142]">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={onImageUpload}
+                  className="hidden"
+                />
+                <CameraIcon />
+                添加图片
+              </label>
+            )}
             {chatResponse.home.quickActions.map((action) => (
               <button
                 key={action.id}
@@ -1000,6 +1088,24 @@ function SendIcon() {
         strokeLinecap="round"
         strokeWidth="1.8"
       />
+    </svg>
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="h-6 w-6"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
     </svg>
   );
 }

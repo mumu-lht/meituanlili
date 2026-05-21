@@ -42,6 +42,7 @@ export type IntentParseResult = {
 export type LlmConversationContext = {
   historyMessages?: ChatHistoryMessage[];
   lastResponse?: ChatResponse;
+  image?: string;
 };
 
 export type GenerateReplyTextInput = {
@@ -94,6 +95,46 @@ JSON 字段必须包含：
 - 如果有历史对话或上一轮行程，且用户说“预算低一点”“不要走太多路”“换一家餐厅”“调整一下”等，intent 必须使用 modify_trip。
 - 如果有历史对话或上一轮行程，且用户说“帮我预订餐厅”“订这个”“确认预订”等，intent 必须使用 booking。
 - 如果用户没有明确说新的城市或新的完整行程，优先沿用 lastResponse 里的城市。
+- city 不确定时返回空字符串。
+- durationHours 不确定时返回 null。
+`.trim();
+
+const systemPromptWithImage = `
+你是美团粒粒的本地短时出游规划意图解析器。
+用户上传了一张图片，请先分析图片内容，然后结合文字描述解析出 JSON 意图。
+只能输出 JSON，不要解释，不要 Markdown，不要代码块。
+
+图片分析要求：
+- 图片是什么类型？（风景照、美食图、地图截图、行程单、餐厅照片、门票、活动海报等）
+- 图片中包含哪些旅行相关信息？（地点/城市、景点名称、餐厅名、时间、人数、菜系、交通方式等）
+- 分析出的信息用于填充 JSON 字段
+
+JSON 字段必须包含：
+{
+  "intent": "plan_trip" | "modify_trip" | "booking" | "general_chat",
+  "city": string,
+  "date": string,
+  "durationHours": number | null,
+  "companions": string[],
+  "preferences": {
+    "cuisines": string[],
+    "pace": "slow" | "balanced" | "compact",
+    "interests": string[],
+    "budget": "low" | "medium" | "high" | null
+  },
+  "avoid": string[],
+  "needFood": boolean,
+  "needBooking": boolean,
+  "needMap": boolean,
+  "travelStyle": "citywalk" | "family_trip" | "food_hunt" | "relaxed_trip"
+}
+
+解析原则：
+- 如果图片显示或暗示是在规划行程/路线，intent 使用 plan_trip。
+- 如果图片是美食但用户文字没有明确要求，needFood 优先设为 true。
+- 如果图片中有明确地点，优先识别城市和具体景点。
+- 如果图片显示时间、人数等信息，应该体现在 date、companions 等字段。
+- 如果图片与旅行无关或无法判断，intent 使用 general_chat。
 - city 不确定时返回空字符串。
 - durationHours 不确定时返回 null。
 `.trim();
@@ -332,6 +373,13 @@ export async function parseIntentWithMeta(
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
+      const userContent = context.image
+        ? [
+            { type: "text" as const, text: JSON.stringify(buildIntentPromptData(message, context)) },
+            { type: "image_url" as const, image_url: { url: context.image } },
+          ]
+        : JSON.stringify(buildIntentPromptData(message, context));
+
       const completion = await client.chat.completions.create({
         model,
         temperature: 0.1,
@@ -339,11 +387,11 @@ export async function parseIntentWithMeta(
         messages: [
           {
             role: "system",
-            content: systemPrompt,
+            content: context.image ? systemPromptWithImage : systemPrompt,
           },
           {
             role: "user",
-            content: JSON.stringify(buildIntentPromptData(message, context)),
+            content: userContent,
           },
         ],
       });

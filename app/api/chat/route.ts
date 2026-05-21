@@ -43,6 +43,7 @@ export async function POST(request: Request) {
   const intentResult = await parseIntentWithMeta(message, {
     historyMessages,
     lastResponse,
+    image: body.image,
   });
   const response = structuredClone(mockChatResponse) as ChatResponse;
   let replyLog: ToolCallLog;

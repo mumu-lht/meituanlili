@@ -49,6 +49,7 @@ export type ChatRequest = {
   sessionId?: string;
   conversationId?: string;
   message: string;
+  image?: string;
   historyMessages?: ChatHistoryMessage[];
   lastResponse?: ChatResponse;
   city?: string;
