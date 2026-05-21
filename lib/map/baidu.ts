@@ -48,21 +48,37 @@ export async function queryBaiduRoute(
     throw new Error("No route found");
   }
 
+  const allPoints: Coordinates[] = [];
+  type LegMode = "walk" | "taxi" | "bus" | "metro";
+  const legMode: LegMode = mode === "driving" ? "taxi" : mode === "walking" ? "walk" : "walk";
+
+  if (route.steps && Array.isArray(route.steps)) {
+    for (const step of route.steps) {
+      if (step.polyline && Array.isArray(step.polyline)) {
+        for (const pt of step.polyline) {
+          allPoints.push({ lat: pt.lat, lng: pt.lng });
+        }
+      }
+    }
+  }
+
+  const legs = [
+    {
+      from: origin.name,
+      to: destination.name,
+      mode: legMode,
+      distanceMeters: route.distance,
+      durationMinutes: Math.round(route.duration / 60),
+      instruction: "",
+      polyline: allPoints,
+    },
+  ];
+
   return {
-    polyline: decodePolyline(route.points),
+    polyline: allPoints,
     totalDistanceMeters: route.distance,
     totalDurationMinutes: Math.round(route.duration / 60),
-    legs: [
-      {
-        from: origin.name,
-        to: destination.name,
-        mode: mode === "driving" ? "taxi" : mode === "walking" ? "walk" : "walk",
-        distanceMeters: route.distance,
-        durationMinutes: Math.round(route.duration / 60),
-        instruction: "",
-        polyline: decodePolyline(route.points),
-      },
-    ],
+    legs,
   };
 }
 
