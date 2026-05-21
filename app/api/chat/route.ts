@@ -2,10 +2,12 @@ import { mockChatResponse } from "@/lib/mock/mockChatResponse";
 import { generateReplyTextWithMeta, parseIntentWithMeta } from "@/lib/llm";
 import {
   selectCityMockData,
+  cityMockData,
   type CityMockData,
   type CityMockSelection,
 } from "@/lib/mock/cityMockData";
 import { queryBaiduRoute, calculateUiPositions } from "@/lib/map/baidu";
+import { searchAttractions, searchRestaurants } from "@/lib/poi/gaode";
 import type {
   ChatHistoryMessage,
   ChatRequest,
@@ -80,6 +82,18 @@ export async function POST(request: Request) {
       fallbackCityNotice,
     );
     await enrichWithBaiduMap(response);
+  } else if (response.intent.city) {
+    const city = response.intent.city.trim();
+    const poisResult = await buildItineraryFromPoi(city, response.intent);
+    if (poisResult) {
+      applyPoiData(response, poisResult);
+      response.reply = buildPoiReply(city, poisResult);
+      await enrichWithBaiduMap(response);
+    } else {
+      applyCityMockData(response, cityMockData["苏州"]);
+      response.reply = `抱歉，暂时无法获取 ${city} 的数据，先用苏州示例数据演示。`;
+      await enrichWithBaiduMap(response);
+    }
   }
 
   try {
@@ -353,4 +367,179 @@ async function enrichWithBaiduMap(response: ChatResponse) {
   } catch (error) {
     console.error("Baidu Maps API error:", error);
   }
+}
+
+type PoiResult = {
+  attractions: import("@/lib/poi/gaode").PoiItem[];
+  restaurants: import("@/lib/poi/gaode").PoiItem[];
+};
+
+async function buildItineraryFromPoi(
+  city: string,
+  intent: import("@/types/agent").TripIntent,
+): Promise<PoiResult | null> {
+  try {
+    const [attractions, restaurants] = await Promise.all([
+      searchAttractions(city, intent.preferences.interests?.[0] || "景点"),
+      searchRestaurants(city, intent.preferences.cuisines?.[0] || "餐厅"),
+    ]);
+
+    if (attractions.length === 0) return null;
+
+    return { attractions, restaurants };
+  } catch (error) {
+    console.error("Gaode POI error:", error);
+    return null;
+  }
+}
+
+function applyPoiData(response: ChatResponse, pois: PoiResult) {
+  const city = response.intent.city;
+  const attractions = pois.attractions.slice(0, 5);
+  const restaurants = pois.restaurants.slice(0, 3);
+
+  const stops = [
+    ...attractions.map((a, i) => ({
+      id: `poi-attraction-${a.id}`,
+      type: "attraction" as const,
+      name: a.name,
+      subtitle: "景点",
+      description: a.address,
+      startTime: `${9 + i * 2}:00`,
+      endTime: `${10 + i * 2}:30`,
+      durationMinutes: 90,
+      address: a.address,
+      coordinates: a.location,
+      queueMinutesEstimate: 0,
+      walkMinutesFromPrevious: i > 0 ? 15 : undefined,
+      tags: ["景点"],
+    })),
+    ...restaurants.slice(0, 1).map((r, i) => ({
+      id: `poi-restaurant-${r.id}`,
+      type: "restaurant" as const,
+      name: r.name,
+      subtitle: "餐饮",
+      description: r.address,
+      startTime: `${12 + i * 2}:00`,
+      endTime: `${13 + i * 2}:00`,
+      durationMinutes: 60,
+      address: r.address,
+      coordinates: r.location,
+      queueMinutesEstimate: 15,
+      walkMinutesFromPrevious: 10,
+      tags: ["餐饮"],
+    })),
+  ];
+
+  response.itinerary = {
+    id: `itinerary-${city}`,
+    title: `${city} Citywalk`,
+    city,
+    summary: `根据你的需求规划了 ${city} 的游览路线`,
+    totalDurationMinutes: 480,
+    totalWalkMinutes: 60,
+    totalDistanceMeters: 5000,
+    stops,
+    legs: [],
+  };
+
+  response.routeCard = {
+    id: `card-route-${city}`,
+    kind: "route",
+    title: "推荐路线",
+    subtitle: city,
+    description: stops.map((s) => s.name).join(" → "),
+    tags: [city, "Citywalk"],
+    priority: 1,
+    icon: "dot",
+  };
+
+  response.map = {
+    id: `map-${city}`,
+    title: "推荐路线地图",
+    summary: stops.map((s) => s.name).join(" → "),
+    center: attractions[0]?.location || { lat: 0, lng: 0 },
+    zoom: 12,
+    markers: [],
+    polyline: [],
+  };
+
+  response.restaurants = restaurants.map((r, i) => ({
+    id: `restaurant-${r.id}`,
+    kind: "restaurant" as const,
+    restaurantId: r.id,
+    title: r.name,
+    subtitle: "餐饮",
+    description: r.address,
+    tags: ["餐饮"],
+    priority: i + 1,
+    name: r.name,
+    cuisine: "本地菜",
+    rating: 4.0,
+    priceLabel: "¥80/人",
+    address: r.address,
+    queueMinutesEstimate: 15,
+    bookingAvailable: false,
+  }));
+
+  response.scenicCards = attractions.slice(0, 5).map((a, i) => ({
+    id: `scenic-${a.id}`,
+    kind: "scenic" as const,
+    scenicId: a.id,
+    title: a.name,
+    subtitle: "景点",
+    description: a.address,
+    tags: ["景点"],
+    priority: i + 1,
+    name: a.name,
+    rating: 4.2,
+    priceLabel: "—",
+    address: a.address,
+  }));
+
+  response.displayCards = [...response.scenicCards, ...response.restaurants];
+
+  response.suggestedActions = [
+    {
+      id: "action-change-restaurant",
+      label: "换一家餐厅",
+      icon: "fork",
+      type: "change_restaurant",
+      payload: {},
+    },
+    {
+      id: "action-lower-budget",
+      label: "预算低一点",
+      icon: "coin",
+      type: "refine_route",
+      payload: {},
+    },
+  ];
+
+  response.booking = {
+    preview: {
+      id: "booking-preview",
+      restaurantId: restaurants[0]?.id || "",
+      restaurantName: restaurants[0]?.name || "",
+      time: "12:00",
+      partySize: 2,
+      queueEstimateText: "预计 15 分钟",
+      fieldLabels: { restaurant: "餐厅", time: "时间", partySize: "人数", queue: "排队" },
+      actionLabel: "确认预订",
+      cancelLabel: "取消",
+      disclaimer: "当前为模拟预订功能",
+    },
+    result: {
+      status: "confirmed",
+      confirmationId: "",
+      message: "模拟预订成功",
+    },
+  };
+}
+
+function buildPoiReply(city: string, pois: PoiResult): string {
+  const topAttractions = pois.attractions.slice(0, 3).map((a) => a.name).join("、");
+  const restaurant = pois.restaurants[0]?.name || "餐厅";
+
+  return `为你规划了 ${city} 经典游路线：先去 ${topAttractions}，中午在 ${restaurant} 用餐。全程少绕路，节奏适中。`;
 }
