@@ -50,7 +50,6 @@ export async function POST(request: Request) {
     image: body.image,
   });
   const response = structuredClone(mockChatResponse) as ChatResponse;
-  let replyLog: ToolCallLog;
 
   response.sessionId = conversationId;
   response.sampleUserMessage = message;
@@ -89,6 +88,10 @@ export async function POST(request: Request) {
       applyPoiData(response, poisResult);
       response.reply = buildPoiReply(city, poisResult);
       await enrichWithBaiduMap(response);
+      response.reply = withFallbackCityNotice(
+        response.reply,
+        fallbackCityNotice,
+      );
     } else {
       applyCityMockData(response, cityMockData["苏州"]);
       response.reply = `抱歉，暂时无法获取 ${city} 的数据，先用苏州示例数据演示。`;
@@ -96,48 +99,64 @@ export async function POST(request: Request) {
     }
   }
 
-  try {
-    const replyResult = await generateReplyTextWithMeta({
-      message,
-      historyMessages,
-      lastResponse,
-      intent: response.intent,
-      itinerary: response.itinerary,
-      routeCard: response.routeCard,
-      map: response.map,
-      cards: response.displayCards,
-    });
+  let replyLog: ToolCallLog;
+  const usePoiReply = response.reply && response.reply.includes("为你规划了");
 
-    response.reply = withFallbackCityNotice(
-      replyResult.replyText,
-      fallbackCityNotice,
-    );
+  if (usePoiReply) {
     replyLog = {
       id: "tool-llm-generate-reply",
       toolName: "llm_generate_reply",
-      status: "success",
+      status: "skipped",
       mock: false,
-      inputSummary: "基于用户输入、真实 intent 和 mock 行程数据生成回复",
-      outputSummary: `DeepSeek 回复生成成功：${replyResult.replyText.slice(
-        0,
-        80,
-      )}`,
-      latencyMs: replyResult.latencyMs,
-      createdAt: now,
-    };
-  } catch (error) {
-    replyLog = {
-      id: "tool-llm-generate-reply",
-      toolName: "llm_generate_reply",
-      status: "error",
-      mock: true,
-      inputSummary: "基于用户输入、真实 intent 和 mock 行程数据生成回复",
-      outputSummary: `DeepSeek 回复生成失败，已使用 mock reply。原因：${
-        error instanceof Error ? error.message : "unknown"
-      }`,
+      inputSummary: "POI 数据已通过高德获取，使用结构化回复",
+      outputSummary: `高德 POI 回复：${response.reply.slice(0, 80)}`,
       latencyMs: 0,
       createdAt: now,
     };
+  } else {
+    try {
+      const replyResult = await generateReplyTextWithMeta({
+        message,
+        historyMessages,
+        lastResponse,
+        intent: response.intent,
+        itinerary: response.itinerary,
+        routeCard: response.routeCard,
+        map: response.map,
+        cards: response.displayCards,
+      });
+
+      response.reply = withFallbackCityNotice(
+        replyResult.replyText,
+        fallbackCityNotice,
+      );
+      replyLog = {
+        id: "tool-llm-generate-reply",
+        toolName: "llm_generate_reply",
+        status: "success",
+        mock: false,
+        inputSummary: "基于用户输入、真实 intent 和 mock 行程数据生成回复",
+        outputSummary: `DeepSeek 回复生成成功：${replyResult.replyText.slice(
+          0,
+          80,
+        )}`,
+        latencyMs: replyResult.latencyMs,
+        createdAt: now,
+      };
+    } catch (error) {
+      replyLog = {
+        id: "tool-llm-generate-reply",
+        toolName: "llm_generate_reply",
+        status: "error",
+        mock: true,
+        inputSummary: "基于用户输入、真实 intent 和 mock 行程数据生成回复",
+        outputSummary: `DeepSeek 回复生成失败，已使用 mock reply。原因：${
+          error instanceof Error ? error.message : "unknown"
+        }`,
+        latencyMs: 0,
+        createdAt: now,
+      };
+    }
   }
 
   const llmIntentLog: ToolCallLog = {
